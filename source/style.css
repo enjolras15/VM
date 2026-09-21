@@ -1,0 +1,257 @@
+/* =========================================================
+   Design tokens
+   ========================================================= */
+:root {
+  /* surfaces */
+  --bg-body:     #111;
+  --bg-panel:    #1c1c1c;
+  --bg-hover:    #242424;
+  --bg-active:   #2a2a2a;
+  --bg-input:    #000;
+
+  /* borders */
+  --border:        #333;
+  --border-active: #555;
+
+  /* text */
+  --fg:        #eee;
+  --fg-strong: #fff;
+  --fg-mid:    #ccc;
+  --fg-muted:  #888;
+  --fg-faint:  #666;
+
+  /* accents */
+  --accent-run:  #2a5;
+  --accent-sec:  #345;
+  --accent-dang: #633;
+  --term-green:  #0f0;
+  --term-cyan:   #0ff;
+  --close-hover: #f55;
+
+  /* shape */
+  --radius-tab: 6px 6px 0 0;
+  --radius-btn: 4px;
+  --font-mono:  monospace;
+}
+
+/* =========================================================
+   Base
+   ========================================================= */
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg-body);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  padding: 16px;
+  margin: 0;
+}
+
+h1 {
+  font-size: 16px;
+  margin: 0 0 12px;
+  color: var(--fg-mid);
+}
+
+.section-title {
+  font-size: 11px;
+  color: var(--fg-faint);
+  margin: 10px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* =========================================================
+   Tabs — タブバーと「タブ風」要素（.tab / .add）の共通外観
+   ========================================================= */
+.tabs {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+}
+
+/* タブ風の見た目を共有 */
+.tab,
+.add {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-tab);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--fg-muted);
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  user-select: none;
+  max-width: 160px;
+}
+.tab .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab:hover  { background: var(--bg-hover); }
+.tab.active {
+  background: var(--bg-active);
+  color: var(--fg-strong);
+  border-color: var(--border-active);
+}
+
+.add {
+  padding: 5px 12px;
+  font-size: 14px;
+  color: var(--fg-mid);
+}
+.add:hover { background: var(--bg-active); color: var(--fg-strong); }
+
+/* タブ内のクローズボタン（ゴーストボタン） */
+.tab .close {
+  border: none;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  padding: 0 2px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+}
+.tab .close:hover { color: var(--close-hover); }
+
+/* =========================================================
+   Editor
+   ========================================================= */
+#source {
+  width: 100%;
+  height: 300px;
+  background: var(--bg-input);
+  color: var(--term-green);
+  border: 1px solid var(--border);
+  border-top: none;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+  outline: none;
+}
+
+/* =========================================================
+   Rows & buttons — アクションボタンの共通外観
+   ========================================================= */
+.row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+button.act {
+  padding: 6px 14px;
+  background: var(--accent-run);
+  color: var(--fg-strong);
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+button.act:hover { filter: brightness(1.15); }
+
+button.act.secondary { background: var(--accent-sec); }
+button.act.danger    { background: var(--accent-dang); }
+
+/* =========================================================
+   Screen & Log
+   ========================================================= */
+#screen {
+  display: block;
+  background: var(--bg-input);
+  border: 2px solid var(--border);
+  image-rendering: pixelated;
+  max-width: 100%;
+}
+
+#log {
+  background: var(--bg-input);
+  color: var(--term-cyan);
+  padding: 8px 10px;
+  min-height: 60px;
+  max-height: 180px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre;
+  border: 1px solid var(--border);
+  margin: 0;
+}
+
+/* --- Editor toolbar (デモ選択チップ) --- */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #16161c;
+  border: 1px solid #2e2e38;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+.toolbar-label {
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #7a7a88;
+  margin-right: 4px;
+}
+.chip {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: #23232c;
+  color: #c8c8d0;
+  border: 1px solid #3a3a48;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.chip:hover {
+  background: #33334a;
+  color: #fff;
+}
+
+/* --- Machine switches --- */
+.row.power-row {
+  margin-bottom: 8px;
+}
+.act.power {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: #fff;
+  background: linear-gradient(180deg, #2e7d32, #1b5e20);
+  border: 1px solid #1b5e20;
+  border-radius: 8px;
+  box-shadow: 0 2px 0 #0d3310, inset 0 1px 0 rgba(255,255,255,.15);
+  cursor: pointer;
+}
+.act.power:hover  { background: linear-gradient(180deg, #388e3c, #2e7d32); }
+.act.power:active { transform: translateY(1px); box-shadow: 0 1px 0 #0d3310; }
+.act.power:disabled { opacity: .5; cursor: default; }
+
+.row.switches-row .act {
+  font-size: 12px;
+  padding: 6px 10px;
+}

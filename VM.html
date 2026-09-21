@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Mini CPU + VRAM — Assembler</title>
+<link rel="stylesheet" href="source/style.css">
+<link rel="icon" href="source/icon.png">
+</head>
+<body>
+
+<div class="section-title">Editor</div>
+<div class="editor-toolbar">
+  <span class="toolbar-label">Demo:</span>
+  <button class="chip" onclick="loadDemo('hello')">Hello</button>
+  <button class="chip" onclick="loadDemo('fill')">Fill</button>
+  <button class="chip" onclick="loadDemo('lines')">Lines</button>
+  <button class="chip" onclick="loadDemo('counter')">Counter</button>
+  <button class="chip" onclick="loadDemo('colors')">Colors</button>
+</div>
+<div class="tabs">
+  <button class="add" title="New tab">＋</button>
+</div>
+<textarea id="source" spellcheck="false"></textarea>
+
+<div class="section-title">Machine</div>
+
+<!-- 主操作: 電源投入 → リセット → ロード → 実行 -->
+<div class="row power-row">
+  <button class="act power" id="btn-boot" onclick="bootAndRun()">⏻ Boot &amp; Run</button>
+</div>
+
+<!-- 実機スイッチ相当の細かい操作 -->
+<div class="row switches-row">
+  <button class="act" id="btn-run" onclick="runProgram()">▶ Load &amp; Run</button>
+  <button class="act danger" id="btn-stop" onclick="onStopResume()" disabled>■ Stop</button>
+  <button class="act secondary" onclick="resetMachine()">⟲ Reset</button>
+  <button class="act secondary" onclick="rebootMachine()">⏻ Power Cycle</button>
+</div>
+
+<div class="section-title">Screen</div>
+<canvas id="screen"></canvas>
+
+<div class="section-title">Log</div>
+<pre id="log"></pre>
+
+<script src="source/machine.js"></script>
+<script src="source/assembler.js"></script>
+<script src="source/ui.js"></script>
+
+</body>
+</html>
