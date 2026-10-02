@@ -26,6 +26,15 @@
 
 <!-- 主操作: 電源投入 → リセット → ロード → 実行 -->
 <div class="row power-row">
+  
+    <!-- 電源 LED（ボタンではなく状態表示のみ） -->
+  <div class="power-led-indicator" title="Power indicator">
+    <span class="power-led-socket">
+      <span class="power-led is-off" id="power-led"></span>
+    </span>
+    <span class="power-led-label" id="power-label">POWER OFF</span>
+  </div>
+
   <button class="act power" id="btn-boot" onclick="bootAndRun()">⏻ Boot &amp; Run</button>
 </div>
 
@@ -33,8 +42,9 @@
 <div class="row switches-row">
   <button class="act" id="btn-run" onclick="runProgram()">▶ Load &amp; Run</button>
   <button class="act danger" id="btn-stop" onclick="onStopResume()" disabled>■ Stop</button>
-  <button class="act secondary" onclick="resetMachine()">⟲ Reset</button>
-  <button class="act secondary" onclick="rebootMachine()">⏻ Power Cycle</button>
+  <button class="act secondary" id="btn-reset" onclick="resetMachine()">⟲ Reset</button>
+  <button class="act secondary" id="btn-cycle" onclick="rebootMachine()">⏻ Power Cycle</button>
+  <button class="act secondary" id="btn-power" onclick="togglePower()">⏻ Power ON</button>
 </div>
 
 <div class="section-title">Screen</div>

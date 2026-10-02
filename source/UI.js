@@ -100,6 +100,13 @@ tabsDom.addEventListener("click", (e) => {
 const memory = new Uint8Array(MEM_SIZE);
 const video  = new VideoChip(document.getElementById("screen"), memory);
 const cpu    = new CPU(memory);
+const nic    = new NIC(memory);
+
+// NIC のログを UI のログ欄に流す
+nic.setLogger(msg => log(msg));
+
+// MMIO 書き込みを NIC に通知
+cpu.mmioWriteHook = (addr, value) => nic.onWrite(addr, value);
 
 // =========================================================
 // 実行制御
@@ -116,18 +123,28 @@ const CYCLES_PER_FRAME = Math.round(CLOCK_HZ * FRAME_MS / 1000);
 
 let isRunning     = false;
 let isPaused      = false;
+let isPowerOn     = false;   // 初期状態は OFF
 let stopRequested = false;
-let currentRunPromise = null;   // 走行ループの Promise（Boot 時に待つ）
+let currentRunPromise = null;
 
-const btnBoot = document.getElementById("btn-boot");
-const btnRun  = document.getElementById("btn-run");
-const btnStop = document.getElementById("btn-stop");
+const btnBoot  = document.getElementById("btn-boot");
+const btnStop  = document.getElementById("btn-stop");
+const btnPower = document.getElementById("btn-power");
+const ledEl    = document.getElementById("power-led");
+const ledLabel = document.getElementById("power-label");
 
 function refreshButtons() {
-  btnBoot.disabled = isRunning;      // 走行中は Boot 不可
-  btnRun.disabled  = false;          // Load&Run は走行中でも可（= hot-swap）
   btnStop.disabled = !(isRunning || isPaused);
   btnStop.textContent = isPaused ? "▶ Resume" : "■ Stop";
+  btnPower.textContent = isPowerOn ? "⏻ Power OFF" : "⏻ Power ON";
+
+  if (isPowerOn) {
+    ledEl.classList.remove("is-off");
+    ledLabel.textContent = "POWER ON";
+  } else {
+    ledEl.classList.add("is-off");
+    ledLabel.textContent = "POWER OFF";
+  }
 }
 
 function setRunningState(running) {
@@ -166,6 +183,7 @@ function onStopResume() {
 // Load & Run（カートリッジ差し替え / ホットスワップ）
 // ---------------------------------------------------------
 async function runProgram() {
+  isPowerOn = true;
   let binary;
   try {
     binary = assemble(editor.value);
@@ -273,27 +291,52 @@ async function runLoop() {
   }
 }
 
+// =========================================================
+// 電源トグル
 // ---------------------------------------------------------
-// Reset（リセット回路）
-// ---------------------------------------------------------
-function resetMachine() {
-  isPaused = false;
-  cpu.reset();
-  video.render();
-  resetLog();
-  log(`⟲ Reset (PC ← 0x0000, memory preserved)`);
+function togglePower() {
+  isPowerOn = !isPowerOn;
+
+  if (!isPowerOn) {
+    stopRequested = true;
+    cpu.halted = true;
+    isPaused = false;
+
+    const ctx = video.ctx;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, video.canvas.width, video.canvas.height);
+
+    memory.fill(0)
+    cpu.reset();
+
+    resetLog();
+    log("⏻ Power off");
+  } else {
+    resetLog();
+    log("⏻ Power on");
+    video.render();
+  }
+
   refreshButtons();
 }
 
-// ---------------------------------------------------------
-// Power Cycle（電源再投入）
-// ---------------------------------------------------------
+async function bootAndRun() {
+  if (isRunning) {
+    stopRequested = true;
+    try { await currentRunPromise; } catch (_) {}
+  }
+  isPowerOn = true;
+  rebootMachine();
+  await runProgram();
+}
+
 function rebootMachine() {
   memory.fill(0);
   cpu.reset();
   video.render();
   resetLog();
   isPaused = false;
+  isPowerOn = true;
   log("⏻ Power cycle (memory cleared, CPU reset)");
   refreshButtons();
 }
@@ -302,40 +345,41 @@ function rebootMachine() {
 // デモプログラム
 // =========================================================
 const DEMOS = {
-  hello: `; Hello, World!
-; VRAM(0x8000) に1文字ずつ書き込む
-    LDI 15
-    STA 0xC002      ; fg = white
-    LDI 1
-    STA 0xC003      ; bg = blue
-
-    LDX 0
-loop:
+  hello: `loop:
     LDA_X msg
     CMP zero
     JZ  done
-    STA_X 0x8000    ; VRAM[X] = A
+    STA_X 0x8000    ; VRAM[0x8000 + X] = A
     INX
     JMP loop
 done:
     HLT
 
-zero:   DB 0
-msg:    DB "Hello, World!", 0
+zero: DB 0
+
+; 文字と属性を交互に並べたテーブル
+msg:
+    DB 'H', 15      ; 'H' を白で
+    DB 'e', 12      ; 'e' を明るい赤で
+    DB 'l', 10      ; 'l' を明るい緑で
+    DB 'l', 14      ; 'l' を黄色で
+    DB 'o', 11      ; 'o' を明るい水色で
+    DB 0, 0         ; 終端
 `,
 
   fill: `; 画面全体を 'X' で埋める
-    LDI 15
-    STA 0xC002
     LDI 4
     STA 0xC003
 
-    LDI 88          ; 'X'
     LDX 0
 loop:
+    LDI 88          ; 'X'
     STA_X 0x8000
     INX
-    CPX 2000        ; 80 * 25
+    LDI 15
+    STA_X 0x8000
+    INX
+    CPX 4000        ; 80 * 25
     JNZ loop
     HLT
 `,
@@ -438,4 +482,5 @@ function loadDemo(name) {
 // 初期化
 // =========================================================
 createTab(DEMOS.hello);
+refreshButtons();
 video.render();

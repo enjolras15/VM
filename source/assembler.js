@@ -103,3 +103,23 @@ function splitComma(s) {
   if (cur.trim()) out.push(cur);
   return out;
 }
+
+function parseOperand(s, labels) {
+  s = (s || "").trim();
+  if (!s) return 0;
+
+  // ★ LO(式) / HI(式) : 16bit値の下位・上位バイトを取り出す
+  if (s.startsWith("LO(") && s.endsWith(")")) {
+    return parseOperand(s.slice(3, -1).trim(), labels) & 0xFF;
+  }
+  if (s.startsWith("HI(") && s.endsWith(")")) {
+    return (parseOperand(s.slice(3, -1).trim(), labels) >> 8) & 0xFF;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(labels, s)) return labels[s] & 0xFFFF;
+  if (s.startsWith("0x") || s.startsWith("0X")) return parseInt(s.slice(2), 16) & 0xFFFF;
+  if (s.startsWith("$"))                        return parseInt(s.slice(1), 16) & 0xFFFF;
+  if (s.startsWith("'") && s.endsWith("'") && s.length >= 3) return s.charCodeAt(1) & 0xFF;
+  if (/^-?\d+$/.test(s))                        return parseInt(s, 10) & 0xFFFF;
+  throw new Error("Invalid operand: " + s);
+}
