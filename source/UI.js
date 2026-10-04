@@ -1,17 +1,23 @@
 // =========================================================
-// タブ管理
+// DOM / ログ
 // =========================================================
-const tabs = new Map();      // id -> { id, text, element }
-let currentId = -1;
-let nextId = 1;
-
 const tabsDom = document.querySelector(".tabs");
 const addBtn  = document.querySelector(".add");
 const editor  = document.getElementById("source");
 const $log    = document.getElementById("log");
 
-function log(msg)   { $log.textContent += msg + "\n"; $log.scrollTop = $log.scrollHeight; }
+function log(msg) {
+  $log.append(msg + "\n");
+  $log.scrollTop = $log.scrollHeight;
+}
 function resetLog() { $log.textContent = ""; }
+
+// =========================================================
+// タブ管理
+// =========================================================
+const tabs = new Map();      // id -> { id, text, element }
+let currentId = -1;
+let nextId = 1;
 
 function createTab(content = "", title = null) {
   const id = nextId++;
@@ -21,15 +27,14 @@ function createTab(content = "", title = null) {
 
   const titleEl = document.createElement("span");
   titleEl.className = "title";
-  titleEl.textContent = title || ("tab " + id);
-  el.appendChild(titleEl);
+  titleEl.textContent = title || "tab " + id;
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "close";
   closeBtn.textContent = "×";
   closeBtn.title = "Close";
-  el.appendChild(closeBtn);
 
+  el.append(titleEl, closeBtn);
   tabs.set(id, { id, text: content, element: el });
   tabsDom.insertBefore(el, addBtn);
 
@@ -38,37 +43,30 @@ function createTab(content = "", title = null) {
   return id;
 }
 
-function switchTab(id) {
-  if (!tabs.has(id)) return;
+function setTabTitle(id, title) {
+  const tab = tabs.get(id);
+  if (tab) tab.element.querySelector(".title").textContent = title;
+}
 
-  // 現在タブの内容を保存
-  if (tabs.has(currentId)) {
-    tabs.get(currentId).text = editor.value;
-  }
+function switchTab(id) {
+  const tab = tabs.get(id);
+  if (!tab) return;
 
   currentId = id;
-  editor.value = tabs.get(id).text;
-
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  tabs.get(id).element.classList.add("active");
+  editor.value = tab.text;
+  for (const t of tabs.values()) {
+    t.element.classList.toggle("active", t.id === id);
+  }
 }
 
 function closeTab(id) {
   if (tabs.size <= 1) return;    // 最後の1枚は閉じさせない
-  const t = tabs.get(id);
-  if (!t) return;
+  const tab = tabs.get(id);
+  if (!tab) return;
 
-  t.element.remove();
+  tab.element.remove();
   tabs.delete(id);
-
-  if (currentId === id) {
-    // 削除済みタブに保存しないよう、直接切替
-    const newId = tabs.keys().next().value;
-    currentId = newId;
-    editor.value = tabs.get(newId).text;
-    document.querySelectorAll(".tab").forEach(el => el.classList.remove("active"));
-    tabs.get(newId).element.classList.add("active");
-  }
+  if (currentId === id) switchTab(tabs.keys().next().value);
   updateCloseButtons();
 }
 
@@ -79,7 +77,12 @@ function updateCloseButtons() {
   });
 }
 
-// --- タブバーのイベント ---
+// エディタの内容は常に現在タブへ同期
+editor.addEventListener("input", () => {
+  const tab = tabs.get(currentId);
+  if (tab) tab.text = editor.value;
+});
+
 addBtn.addEventListener("click", () => createTab(""));
 
 tabsDom.addEventListener("click", (e) => {
@@ -87,11 +90,8 @@ tabsDom.addEventListener("click", (e) => {
   if (!tabEl) return;
   const id = Number(tabEl.dataset.id);
 
-  if (e.target.classList.contains("close")) {
-    closeTab(id);
-    return;
-  }
-  switchTab(id);
+  if (e.target.classList.contains("close")) closeTab(id);
+  else switchTab(id);
 });
 
 // =========================================================
@@ -102,10 +102,7 @@ const video  = new VideoChip(document.getElementById("screen"), memory);
 const cpu    = new CPU(memory);
 const nic    = new NIC(memory);
 
-// NIC のログを UI のログ欄に流す
-nic.setLogger(msg => log(msg));
-
-// MMIO 書き込みを NIC に通知
+nic.setLogger(log);
 cpu.mmioWriteHook = (addr, value) => nic.onWrite(addr, value);
 
 // =========================================================
@@ -114,20 +111,20 @@ cpu.mmioWriteHook = (addr, value) => nic.onWrite(addr, value);
 // Boot & Run   … 電源投入 → リセット → ロード → 実行（主操作）
 // Load & Run   … カートリッジ差し替え（CPU 状態は保持、ホットスワップ）
 // Stop / Resume… 一時停止 / 続きから再開
-// Reset        … リセット回路（PC ← 0、メモリ保持）
+// Reset        … リセット回路（PC ← 0、メモリ保持。走行中なら再開）
 // Power Cycle  … 電源再投入（メモリもクリア）
+// Power ON/OFF … 電源スイッチ
 // =========================================================
-const CLOCK_HZ         = 1_000_000;
-const FRAME_MS         = 1000 / 60;
-const CYCLES_PER_FRAME = Math.round(CLOCK_HZ * FRAME_MS / 1000);
+const CLOCK_HZ     = 1_000_000;
+const FRAME_MS     = 1000 / 60;
+const MAX_FRAME_MS = 100;        // タブ非表示などで間が空いても、これ以上は一度に進めない
 
 let isRunning     = false;
 let isPaused      = false;
-let isPowerOn     = false;   // 初期状態は OFF
+let isPowerOn     = false;
 let stopRequested = false;
-let currentRunPromise = null;
+let currentRunPromise = null;    // 走行ループ全体（終了処理込み）
 
-const btnBoot  = document.getElementById("btn-boot");
 const btnStop  = document.getElementById("btn-stop");
 const btnPower = document.getElementById("btn-power");
 const ledEl    = document.getElementById("power-led");
@@ -137,14 +134,8 @@ function refreshButtons() {
   btnStop.disabled = !(isRunning || isPaused);
   btnStop.textContent = isPaused ? "▶ Resume" : "■ Stop";
   btnPower.textContent = isPowerOn ? "⏻ Power OFF" : "⏻ Power ON";
-
-  if (isPowerOn) {
-    ledEl.classList.remove("is-off");
-    ledLabel.textContent = "POWER ON";
-  } else {
-    ledEl.classList.add("is-off");
-    ledLabel.textContent = "POWER OFF";
-  }
+  ledEl.classList.toggle("is-off", !isPowerOn);
+  ledLabel.textContent = isPowerOn ? "POWER ON" : "POWER OFF";
 }
 
 function setRunningState(running) {
@@ -152,30 +143,31 @@ function setRunningState(running) {
   refreshButtons();
 }
 
-// ---------------------------------------------------------
-// Boot & Run（主操作）
-// ---------------------------------------------------------
-// 走行中なら一旦停止 → 電源再投入 → ロード → 実行。
-async function bootAndRun() {
-  if (isRunning) {
-    stopRequested = true;
-    try { await currentRunPromise; } catch (_) { /* ignore */ }
-  }
-  rebootMachine();       // メモリクリア + CPU リセット（PC ← 0）
-  await runProgram();    // カートリッジをロードして走行開始
+// 走行中なら停止要求を出し、ループが終わるまで待つ
+async function stopRunning() {
+  if (!currentRunPromise) return;
+  stopRequested = true;
+  try { await currentRunPromise; } catch (_) { /* ignore */ }
 }
 
 // ---------------------------------------------------------
-// Stop / Resume（統合ハンドラ）
+// Boot & Run（主操作）
+// ---------------------------------------------------------
+async function bootAndRun() {
+  await rebootMachine();   // 停止 + メモリクリア + CPU リセット
+  await runProgram();
+}
+
+// ---------------------------------------------------------
+// Stop / Resume
 // ---------------------------------------------------------
 function onStopResume() {
   if (isRunning) {
     stopRequested = true;
     log("⏹ Stop requested (PC preserved)");
   } else if (isPaused) {
-    isPaused = false;
-    refreshButtons();
-    resumeExecution();
+    log("▶ Resuming from stopped state...");
+    runLoop();
   }
 }
 
@@ -183,13 +175,12 @@ function onStopResume() {
 // Load & Run（カートリッジ差し替え / ホットスワップ）
 // ---------------------------------------------------------
 async function runProgram() {
-  isPowerOn = true;
   let binary;
   try {
     binary = assemble(editor.value);
     if (binary.length > MEM_SIZE) {
       throw new Error(
-        `Program too large: ${binary.length} bytes > ${MEM_SIZE} (0x${MEM_SIZE.toString(16)}) available`
+        `Program too large: ${binary.length} bytes > ${MEM_SIZE} (0x${hex(MEM_SIZE)}) available`
       );
     }
   } catch (e) {
@@ -197,147 +188,143 @@ async function runProgram() {
     return;
   }
 
-  const savedPC    = cpu.PC;
-  const savedA     = cpu.A;
-  const savedX     = cpu.X;
-  const savedZ     = cpu.Z;
-  const wasHalted  = cpu.halted;
-  const wasRunning = isRunning;
+  isPowerOn = true;
+  refreshButtons();
 
+  const wasHalted = cpu.halted;
   memory.set(binary, 0);
   cpu.halted = false;   // 実機 6502 に HLT は無い（動き続けている扱い）
 
   log(`🔌 Load ${binary.length} bytes @ 0x0000`);
-  log(`   PC=0x${savedPC.toString(16).padStart(4, "0")}  A=${savedA}  X=${savedX}  Z=${savedZ}  (preserved)`);
-  if (wasHalted) log(`   halted → false (HLT is not a real 6502 instruction)`);
+  log(`   PC=0x${hex(cpu.PC)}  A=${cpu.A}  X=${cpu.X}  Z=${cpu.Z}  (preserved)`);
+  if (wasHalted) log("   halted → false (HLT is not a real 6502 instruction)");
 
-  if (wasRunning) {
-    log(`   ⚠ Hot-swap: CPU continues from current PC — boundaries may be misaligned`);
+  if (isRunning) {
+    log("   ⚠ Hot-swap: CPU continues from current PC — boundaries may be misaligned");
     return;
   }
-
-  if (savedPC !== 0) {
-    log(`   ⚠ CPU continues from PC=0x${savedPC.toString(16).padStart(4, "0")} — not from 0x0000`);
-  } else {
-    log(`   PC=0x0000 — starting from entry point`);
-  }
+  if (cpu.PC !== 0) log(`   ⚠ CPU continues from PC=0x${hex(cpu.PC)} — not from 0x0000`);
+  else              log("   PC=0x0000 — starting from entry point");
 
   await runLoop();
 }
 
-async function resumeExecution() {
-  log("▶ Resuming from stopped state...");
-  await runLoop();
-}
-
 // ---------------------------------------------------------
-// 走行ループ本体（runProgram / resumeExecution / bootAndRun から共通利用）
+// 走行ループ
 // ---------------------------------------------------------
-async function runLoop() {
+function runLoop() {
   isPaused = false;
-  setRunningState(true);
   stopRequested = false;
+  setRunningState(true);
 
-  const promise = (async () => {
-    const startWall  = performance.now();
-    let   totalSteps = 0;
-    let   runtimeError = null;
-    let   lastSec    = 0;
+  const task = executeLoop().finally(() => {
+    currentRunPromise = null;
+    setRunningState(false);
+  });
+  currentRunPromise = task;
+  return task;
+}
 
-    while (!cpu.halted && !stopRequested) {
-      try {
-        const executed = cpu.runSlice(CYCLES_PER_FRAME);
-        totalSteps += executed;
-        if (executed === 0) break;
-      } catch (e) {
-        runtimeError = e;
-        break;
-      }
+async function executeLoop() {
+  const startWall = performance.now();
+  let last         = startWall - FRAME_MS;   // 初回フレームから 1 フレーム分進める
+  let totalSteps   = 0;
+  let lastSec      = 0;
+  let runtimeError = null;
 
-      video.render();
+  while (!cpu.halted && !stopRequested) {
+    // 実時間に応じて実行数を決める（リフレッシュレートに依存しない）
+    const now    = performance.now();
+    const budget = Math.round(CLOCK_HZ * Math.min(now - last, MAX_FRAME_MS) / 1000);
+    last = now;
 
-      const sec = Math.floor((performance.now() - startWall) / 1000);
-      if (sec > lastSec) {
-        lastSec = sec;
-        const eff = totalSteps / sec / 1000;
-        log(`  t=${sec}s   cycles=${totalSteps.toLocaleString()}   eff=${eff.toFixed(1)} kHz`);
-      }
-
-      await new Promise(r => requestAnimationFrame(r));
+    try {
+      totalSteps += cpu.runSlice(budget);
+    } catch (e) {
+      runtimeError = e;
+      break;
     }
 
     video.render();
 
-    const elapsedSec = (performance.now() - startWall) / 1000;
-    const effKhz     = elapsedSec > 0 ? totalSteps / elapsedSec / 1000 : 0;
-
-    if (runtimeError) log("Runtime error: " + runtimeError.message);
-    log(`Executed ${totalSteps.toLocaleString()} cycles in ${elapsedSec.toFixed(2)}s`);
-    log(`  Effective clock: ${effKhz.toFixed(1)} kHz`);
-    log(`A=${cpu.A}  X=${cpu.X}  PC=0x${cpu.PC.toString(16)}  Z=${cpu.Z}  HLT=${cpu.halted}`);
-
-    if (stopRequested && !cpu.halted) {
-      isPaused = true;
-      log("⏸ Paused — press Resume to continue");
+    const sec = Math.floor((now - startWall) / 1000);
+    if (sec > lastSec) {
+      lastSec = sec;
+      log(`  t=${sec}s   cycles=${totalSteps.toLocaleString()}   eff=${(totalSteps / sec / 1000).toFixed(1)} kHz`);
     }
-  })();
 
-  currentRunPromise = promise;
-  try {
-    await promise;
-  } finally {
-    if (currentRunPromise === promise) currentRunPromise = null;
-    setRunningState(false);
+    await new Promise(r => requestAnimationFrame(r));
+  }
+
+  video.render();
+
+  const elapsedSec = (performance.now() - startWall) / 1000;
+  const effKhz     = totalSteps / elapsedSec / 1000;
+
+  if (runtimeError) log("Runtime error: " + runtimeError.message);
+  log(`Executed ${totalSteps.toLocaleString()} cycles in ${elapsedSec.toFixed(2)}s`);
+  log(`  Effective clock: ${effKhz.toFixed(1)} kHz`);
+  log(`A=${cpu.A}  X=${cpu.X}  PC=0x${hex(cpu.PC)}  Z=${cpu.Z}  HLT=${cpu.halted}`);
+
+  if (stopRequested && !cpu.halted) {
+    isPaused = true;
+    log("⏸ Paused — press Resume to continue");
   }
 }
 
 // =========================================================
-// 電源トグル
-// ---------------------------------------------------------
-function togglePower() {
-  isPowerOn = !isPowerOn;
+// Reset / Power Cycle / Power
+// =========================================================
 
-  if (!isPowerOn) {
-    stopRequested = true;
-    cpu.halted = true;
-    isPaused = false;
+// リセット回路: PC ← 0、メモリ保持。走行中だった場合は 0 から再開する
+async function resetMachine() {
+  if (!isPowerOn) return;
+  const wasRunning = isRunning;
+  await stopRunning();
 
-    const ctx = video.ctx;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, video.canvas.width, video.canvas.height);
-
-    memory.fill(0)
-    cpu.reset();
-
-    resetLog();
-    log("⏻ Power off");
-  } else {
-    resetLog();
-    log("⏻ Power on");
-    video.render();
-  }
-
+  cpu.reset();
+  nic.reset();
+  isPaused = false;
+  log("⟲ Reset (PC ← 0x0000, memory kept)");
   refreshButtons();
+
+  if (wasRunning) await runLoop();
 }
 
-async function bootAndRun() {
-  if (isRunning) {
-    stopRequested = true;
-    try { await currentRunPromise; } catch (_) {}
-  }
-  isPowerOn = true;
-  rebootMachine();
-  await runProgram();
-}
+// 電源再投入: メモリクリア + CPU リセット（走行中なら先に停止）
+async function rebootMachine() {
+  await stopRunning();
 
-function rebootMachine() {
   memory.fill(0);
   cpu.reset();
+  nic.reset();
   video.render();
   resetLog();
   isPaused = false;
   isPowerOn = true;
   log("⏻ Power cycle (memory cleared, CPU reset)");
+  refreshButtons();
+}
+
+async function togglePower() {
+  if (isPowerOn) {
+    await stopRunning();
+    isPowerOn = false;
+    isPaused = false;
+
+    video.clear();
+    memory.fill(0);
+    cpu.reset();
+    nic.reset();
+
+    resetLog();
+    log("⏻ Power off");
+  } else {
+    isPowerOn = true;
+    resetLog();
+    log("⏻ Power on");
+    video.render();
+  }
   refreshButtons();
 }
 
@@ -379,7 +366,7 @@ loop:
     LDI 15
     STA_X 0x8000
     INX
-    CPX 4000        ; 80 * 25
+    CPX 4000        ; 80 * 25 * 2
     JNZ loop
     HLT
 `,
@@ -390,20 +377,26 @@ loop:
     LDI 0
     STA 0xC003
 
-    LDI 42          ; '*'
-
-    LDX 0
+    LDX 0           ; 最上行
 top:
+    LDI 42          ; '*'
     STA_X 0x8000
     INX
-    CPX 80
+    LDI 15          ; 属性（白）
+    STA_X 0x8000
+    INX
+    CPX 160         ; 80 桁 * 2 バイト
     JNZ top
 
-    LDX 1920
+    LDX 3840        ; 最下行 (24 * 80 * 2)
 bot:
+    LDI 42
     STA_X 0x8000
     INX
-    CPX 2000
+    LDI 15
+    STA_X 0x8000
+    INX
+    CPX 4000
     JNZ bot
 
     HLT
@@ -420,11 +413,14 @@ loop:
     LDA_X msg
     STA_X 0x8000
     INX
-    CPX 10
+    CPX 20          ; 10 文字 * 2 バイト
     JNZ loop
     HLT
 
-msg:    DB "0123456789"
+; 文字と属性（14=黄）を交互に並べる
+msg:
+    DB '0', 14, '1', 14, '2', 14, '3', 14, '4', 14
+    DB '5', 14, '6', 14, '7', 14, '8', 14, '9', 14
 `,
 
   colors: `; 16色を順番に背景色として切り替える（無限ループ、Stopで停止）
@@ -442,10 +438,7 @@ wait_o:
     LDI 0
 wait_i:
     INC
-    CMP zero
-    JZ  wait_i_done
-    JMP wait_i
-wait_i_done:
+    JNZ wait_i       ; A が 256 で 0 に戻るまで
     LDA outer
     INC
     STA outer
@@ -458,7 +451,6 @@ wait_i_done:
     LDX 0
     JMP cycle
 
-zero:     DB 0
 waitmax:  DB 60
 outer:    DB 0
 pal:      DB 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
@@ -468,19 +460,18 @@ pal:      DB 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 function loadDemo(name) {
   const src = DEMOS[name];
   if (!src) return;
+
   editor.value = src;
-  if (tabs.has(currentId)) tabs.get(currentId).text = src;
-  // タブ名を先頭コメントから拾う（あれば）
-  const m = src.match(/;\s*(.+)/);
-  if (m && tabs.has(currentId)) {
-    const titleEl = tabs.get(currentId).element.querySelector(".title");
-    titleEl.textContent = m[1].slice(0, 18);
-  }
+  tabs.get(currentId).text = src;
+
+  // タブ名は 1 行目がコメントならそれ、なければデモ名
+  const m = src.match(/^;\s*(.+)/);
+  setTabTitle(currentId, (m ? m[1] : name).slice(0, 18));
 }
 
 // =========================================================
 // 初期化
 // =========================================================
-createTab(DEMOS.hello);
+createTab(DEMOS.hello, "hello");
 refreshButtons();
 video.render();
