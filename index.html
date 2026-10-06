@@ -8,11 +8,6 @@
 </head>
 <body>
 
-<div class="page-nav">
-  <a class="nav-button" href="manual.html">📖 Manual</a>
-</div>
-
-<div class="editor-pane">
 <div class="section-title">Editor</div>
 <div class="editor-toolbar">
   <span class="toolbar-label">Demo:</span>
@@ -26,7 +21,6 @@
   <button class="add" title="New tab">＋</button>
 </div>
 <textarea id="source" spellcheck="false"></textarea>
-</div>
 
 <div class="section-title">Machine</div>
 
@@ -48,7 +42,7 @@
 <div class="row switches-row">
   <button class="act" id="btn-run" onclick="runProgram()">▶ Load &amp; Run</button>
   <button class="act danger" id="btn-stop" onclick="onStopResume()" disabled>■ Stop</button>
-  <button class="act secondary" id="btn-reset" onclick="resetMachine()">⟲ Warm Reset</button>
+  <button class="act secondary" id="btn-reset" onclick="Reset()">⟲ Warm Reset</button>
   <button class="act secondary" id="btn-cycle" onclick="rebootMachine()">⏻ Power Cycle</button>
   <button class="act secondary" id="btn-power" onclick="togglePower()">⏻ Power ON</button>
 </div>

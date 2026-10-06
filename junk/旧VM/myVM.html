@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Mini VM</title>
+<style>
+  body {
+    background: #111;
+    color: #eee;
+    font-family: monospace;
+    padding: 20px;
+  }
+  textarea {
+    width: 100%;
+    height: 200px;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #444;
+    padding: 10px;
+  }
+  button {
+    margin-top: 10px;
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+  pre {
+    background: #000;
+    color: #0ff;
+    padding: 10px;
+    min-height: 100px;
+  }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  background: #ddd;
+  border-radius: 6px 6px 0 0;
+  padding: 6px 10px;
+  font-size: 14px;
+  width:40px;
+  height:30px;
+}
+
+.title {
+  margin-right: 8px;
+  color: black;
+}
+
+.close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 25px;
+  padding: 0;
+}
+
+.close:hover {
+  color: red;
+}
+
+/* 選択中 */
+.tab.active {
+  background: white;
+  font-weight: bold;
+  border-bottom: 2px solid white;
+}
+
+/* ホバーも少しだけ */
+.tab:hover {
+  background: #eee;
+}
+
+</style>
+</head>
+<body>
+
+<h2>簡易 仮想マシン</h2>
+
+<div class="tabs">
+  <button class="add">＋</button>
+</div>
+
+<textarea id="source">
+; Hello
+MOV R0, 72
+PRINTC R0
+MOV R0, 105
+PRINTC R0
+
+MOV R1, 10
+MOV R2, 32
+ADD R1, R2
+PRINT R1
+
+HALT
+</textarea>
+
+<br>
+<button onclick="run()">実行</button>
+<button onclick="reboot()">再起動</button>
+<h3>出力</h3>
+<canvas id="screen" width="500" height="500"></canvas>
+
+<script src="source.js"></script>
+<script src="UI.js"></script>
+
+</body>
+</html>
